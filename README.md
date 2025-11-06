@@ -1,11 +1,11 @@
 To get started with this project, follow these steps:
 
 ```bash
-git clone https://github.com/SherwinAllen/cidecode.git
+git clone https://github.com/SherwinAllen/styx.git
 ```
 
 ```bash
-cd cidecode
+cd styx
 ```
 
 ---
