@@ -1,4 +1,6 @@
 To get started with this project, follow these steps:
+**Prequisites**
+Have MongoDB backend server running in the localhost
 
 ```bash
 git clone https://github.com/SherwinAllen/styx.git
