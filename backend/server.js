@@ -7,6 +7,8 @@ const { exec, spawn } = require('child_process');
 const fs = require('fs');
 const { randomUUID } = require('crypto');
 const tar = require('tar-stream');
+const crypto = require('crypto');
+
 
 app.use(cors());
 app.use(express.json());
@@ -184,6 +186,12 @@ app.get('/api/download-file', async (req, res) => {
   }
 });
 
+function hashBufferContent(content, algorithm = "sha256") {
+  const hash = crypto.createHash(algorithm);
+  hash.update(Buffer.isBuffer(content) ? content : Buffer.from(content, "utf-8"));
+  return hash.digest("hex");
+}
+
 // Get file preview (for text files)
 app.get('/api/file-preview', async (req, res) => {
   const filePath = req.query.path;
@@ -244,7 +252,7 @@ app.get('/api/file-preview', async (req, res) => {
       size: fileSize,
       mimeType: mimeType,
       isText: isTextFile,
-      preview: 'Binary file'
+      preview: 'Binary file',
     };
     
     // Only load content if explicitly requested and file is small enough
@@ -257,11 +265,14 @@ app.get('/api/file-preview', async (req, res) => {
           });
           response.content = fileContent;
           response.preview = fileContent.substring(0, 200) + (fileContent.length > 200 ? '...' : '');
+          hash = hashBufferContent(fileContent);
+
         } else if (isImage || isAudio) {
           // For images, get base64 content
           const base64Content = await runAdbCommand(`adb shell "cat '/sdcard/${filePath}' | base64"`, {
             maxBuffer: 1024 * 1024 * 1024 * 1024 * 1024  // 5MB for base64 encoded images
           });
+          hash = hashBufferContent(base64Content);
           response.content = base64Content.trim();
           response.encoding = 'base64';
           response.preview = `Image file (${fileSize} bytes)`;
@@ -270,7 +281,9 @@ app.get('/api/file-preview', async (req, res) => {
         console.warn(`Could not load content for ${filePath}:`, contentError.message);
         // Don't fail the entire request if content can't be loaded
       }
-    } else if (isTextFile && fileSize < 1024 * 10) { // Auto-include small text files (<10KB)
+    response.hash = hash || "N/A";
+
+  } else if (isTextFile && fileSize < 1024 * 10) { // Auto-include small text files (<10KB)
       try {
         const fileContent = await runAdbCommand(`adb shell "cat '/sdcard/${filePath}'"`);
         response.content = fileContent;
@@ -279,9 +292,7 @@ app.get('/api/file-preview', async (req, res) => {
         // Ignore errors for small files
       }
     }
-    
     res.json(response);
-    
   } catch (err) {
     console.error('Error getting file preview:', err);
     res.status(500).json({ error: err.message });
@@ -1458,6 +1469,7 @@ if (fs.existsSync(buildPath)) {
 
 (async () => {
   try {
+    connectDB();
     const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
     const shutdown = async () => {
