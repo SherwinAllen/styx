@@ -24,7 +24,7 @@ const devices = [
 
 const IoTExtractor = () => {
   const [teamText, setTeamText] = useState('');
-  const teamInfo = "Tool Name: StyX\nMembers:\n\tDr Sapna VM \n\tShambo Sarkar\n\tSathvik S\n\tSherwin Allen\n\tMeeran Ahmed \n\tDr Prasad B Honnavalli";
+  const teamInfo = "Tool Name: StyX\nMembers:\n\tDr Sapna V M \n\tShambo Sarkar\n\tSathvik S\n\tSherwin Allen\n\tMeeran Ahmed \n\tDr Prasad B Honnavalli";
 
   useEffect(() => {
     let currentIndex = 0;
