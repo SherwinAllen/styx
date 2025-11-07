@@ -11,6 +11,8 @@ from flask import Flask
 import datetime
 import os
 import json
+import hashlib
+from bson import Binary
 
 app = Flask(__name__)
 
@@ -19,36 +21,54 @@ client = MongoClient("mongodb://localhost:27017/")
 db = client["forensic_evidence"]
 fs = gridfs.GridFS(db)
 
+print("Files in GridFS:")
+for filename in fs.list():
+    print(filename)
+
+def hash_binary_data(binary_data):
+    """Hash binary data from MongoDB"""
+    if isinstance(binary_data, Binary):
+        # If it's a BSON Binary object
+        data_bytes = binary_data
+    else:
+        # If it's already bytes
+        data_bytes = binary_data
+    
+    hash_object = hashlib.sha256(data_bytes)
+    return hash_object.hexdigest()
 
 def get_file_from_mongo(filename):
     """Fetch a file from MongoDB GridFS and return content as text."""
     file_doc = fs.find_one({"filename": filename})
     if not file_doc:
         print(f"[-] File '{filename}' not found in MongoDB.")
-        return ""
+        return "", ""
     try:
         print(f"File {filename} Found")
         data = file_doc.read()
+        file_hash = hash_binary_data(data)
         # Decode text files; binary files can be handled separately if needed
-        return data.decode("utf-8", errors="ignore")
+        return data.decode("utf-8", errors="ignore"), file_hash
     except Exception as e:
         print(f"[!] Error reading {filename} from MongoDB: {e}")
-        return ""
+        return "", ""
 
 def extract_logs_from_file(filepath):
     """Reads up to 20 lines from the given file."""
     parsed_data = []
     raw_lines = []
+    file_hash = ""
     try:
         with open(filepath, 'r', encoding='utf-8', errors='ignore') as file:
-            lines = file.readlines()
+            content = file.read()
+            file_hash = hash_binary_data(content.encode('utf-8'))
+            lines = content.splitlines()
             for line in lines[:20]:
                 raw_lines.append(line.rstrip('\n'))
                 parsed_data.append(line.strip().split())
     except PermissionError as e:
         print(f"Permission denied when accessing {filepath}: {e}")
-    return parsed_data, raw_lines
-
+    return parsed_data, raw_lines, file_hash
 
 def parse_sensor_line(line):
     """Extracts structured info for each sensor log line."""
@@ -69,8 +89,7 @@ def parse_sensor_line(line):
     else:
         return [""] * 5
 
-
-def parse_account_info(log_text):
+def parse_account_info(log_text, file_hash):
     """
     Parses Android account-related forensic dump text into two DataFrames:
       - Accounts table
@@ -109,10 +128,9 @@ def parse_account_info(log_text):
     accounts_df = pd.DataFrame(accounts)
     services_df = pd.DataFrame(services)
 
-    return accounts_df, services_df
+    return accounts_df, services_df, file_hash
 
-
-def extract_sensor_timestamps(raw_lines):
+def extract_sensor_timestamps(raw_lines, file_hash):
     """
     Extract timestamps, sensor IDs, and (optional) sensor names.
     Returns dict: {sensor_id: DataFrame}
@@ -142,8 +160,8 @@ def extract_sensor_timestamps(raw_lines):
     for sensor_id, info in sensor_data.items():
         df = pd.DataFrame(info["entries"], columns=["Timestamp", "Log Line"])
         sensor_dfs[sensor_id] = (info["name"], df)
-    return sensor_dfs
 
+    return sensor_dfs, file_hash
 
 def add_dataframe_to_doc(doc, df, title, max_cols_per_table=5):
     """
@@ -188,27 +206,7 @@ def add_dataframe_to_doc(doc, df, title, max_cols_per_table=5):
         start += max_cols_per_table
         table_index += 1
 
-# --- Configuration ---
-
-log_files = {
-    "Account Information": "account_information.txt",
-    "Bluetooth Information": "bluetooth_information.txt",
-    "Device Properties": "device_properties.txt",
-    "Sensor Data": "sensor_data.txt",
-    "Ip information": "ip_address_information.txt"
-}
-
-column_headers = {
-    "Account Information": ["Field", "Value"],
-    "Bluetooth Information": ["Field", "Value"],
-    "Device Properties": ["Field", "Value"],
-    "Sensor Data": ["Timestamp", "Sensor Type", "Value"]
-}
-
-
-
-# =============================================================== DEBUG =================================================================
-def extract_sensor_data(log_text):
+def extract_sensor_data(log_text, file_hash):
     sensors = {}
     current_sensor = None
     records = []
@@ -220,7 +218,7 @@ def extract_sensor_data(log_text):
         match_sensor = re.match(r'^(.*?):.*events$', line)
         print(line)
         if match_sensor:
-            # Save previous sensor’s records
+            # Save previous sensor's records
             if current_sensor and records:
                 sensors[current_sensor] = pd.DataFrame(records)
                 records = []
@@ -252,33 +250,42 @@ def extract_sensor_data(log_text):
 
             records.append(record)
 
-    # Save last sensor’s data
+    # Save last sensor's data
     if current_sensor and records:
         sensors[current_sensor] = pd.DataFrame(records)
 
-    return sensors
+    return sensors, file_hash
 
-
-def parse_bluetooth_log(doc, text):
+def parse_bluetooth_log(doc, text, file_hash):
     """Extracts Bluetooth connection and bonded device info."""
 
     # 1⃣ Connection / Disconnection events
     print(text)
     dates = re.findall(r"(\d{2}-\d{2})\s\d{2}:\d{2}:\d{2}\.\d{3}", text)
-
     print(dates)
+
     # Count number of events per day
     counter = Counter(dates)
 
     # Convert to pandas Series for plotting
     df = pd.Series(counter).sort_index()
+
+    # --- 📊 Calculate statistics ---
+    avg_events = df.mean() if not df.empty else 0
+    above_avg_days = (df > avg_events).sum()
+    below_avg_days = (df < avg_events).sum()
+    total_days = len(df)
+
+    perc_above = (above_avg_days / total_days * 100) if total_days else 0
+    perc_below = (below_avg_days / total_days * 100) if total_days else 0
+
+    # --- 📈 Plot bar graph ---
     title = "Bluetooth Events Per Day"
-    # Plot bar graph
-    plt.figure(figsize=(10,6))
+    plt.figure(figsize=(10, 6))
     df.plot(kind='bar', color='skyblue')
     plt.xlabel("Date (MM - DD)")
-    plt.ylabel("Number of Bluetooth Events")
-    plt.title("Bluetooth Events per Day")
+    plt.ylabel("Number of Bluetooth Events")    
+    plt.title(title)
     plt.xticks(rotation=45)
 
     # Save plot to a temporary file
@@ -288,24 +295,48 @@ def parse_bluetooth_log(doc, text):
         doc.add_paragraph(title, style='Heading3')
         doc.add_picture(tmpfile.name, width=docx.shared.Inches(6))
 
+    # --- 📄 Add statistics table ---
+    doc.add_paragraph("Bluetooth Activity Statistics:", style='Heading4')
+
+    table = doc.add_table(rows=5, cols=2)
+    table.style = 'Light List Accent 1'
+
+    # Fill the table
+    table.cell(0, 0).text = "Metric"
+    table.cell(0, 1).text = "Value"
+    table.cell(1, 0).text = "Average Bluetooth Events per Day"
+    table.cell(1, 1).text = f"{avg_events:.2f}"
+    table.cell(2, 0).text = "Days Above Average"
+    table.cell(2, 1).text = f"{above_avg_days} ({perc_above:.1f}%)"
+    table.cell(3, 0).text = "Days Below Average"
+    table.cell(3, 1).text = f"{below_avg_days} ({perc_below:.1f}%)"
+    table.cell(4, 0).text = "Total Days Analyzed"
+    table.cell(4, 1).text = f"{total_days}"
+
+    # Adjust column widths (optional, looks cleaner)
+    for row in table.rows:
+        row.cells[0].width = docx.shared.Inches(3)
+        row.cells[1].width = docx.shared.Inches(2)
+
+    doc.add_paragraph()  # spacing after the table
+
     # 2⃣ Bonded devices
     bonded_pattern = r"\s*\(Connected\)\s*([0-9A-F:]{17}) \[.*?\] ([^\(]+)"
-
     bonded_match = re.findall(bonded_pattern, text)
+
     bonded_devices = []
     if bonded_match:
         for match in bonded_match:
             bonded_devices.append({
-                    "Device Name": match[1],
-                    "MAC Address": match[0]
-                })
+                "Device Name": match[1].strip(),
+                "MAC Address": match[0]
+            })
 
     df_bonded = pd.DataFrame(bonded_devices)
 
-    return df_bonded
+    return df_bonded, file_hash
 
-
-def extract_ip_info(output_text):
+def extract_ip_info(output_text, file_hash):
     """
     Parse ADB `ip addr` output and return a pandas DataFrame
     with columns: Interface, Status, MTU, IPv4, Broadcast, IPv6, MAC, Notes
@@ -353,21 +384,13 @@ def extract_ip_info(output_text):
 
     # Convert to DataFrame and map to value_1..value_8
     df = pd.DataFrame(interfaces)
-    # df = df.rename(columns={
-    #     "Interface": "value_1",
-    #     "Status": "value_2",
-    #     "MTU": "value_3",
-    #     "IPv4": "value_4",
-    #     "Broadcast": "value_5",
-    #     "IPv6": "value_6",
-    #     "MAC": "value_7",
-    #     "Notes": "value_8"
-    # })
-    return df
+    
+    return df, file_hash
 
 def get_location(location_file):
     with open(location_file,'r', encoding = 'utf-8') as f:
         location_text = f.read()
+        file_hash = hash_binary_data(location_text.encode('utf-8'))
         regex = re.compile(
             r'Location\[(?:provider=)?(?P<provider>[\w\-]+)?\s*(?P<lat>-?\d+\.\d+)[, ]+(?P<lon>-?\d+\.\d+).*?(?:hAcc=(?P<acc>\d+\.?\d*))?',
             re.IGNORECASE | re.DOTALL
@@ -386,10 +409,9 @@ def get_location(location_file):
         # Convert to DataFrame
         df = pd.DataFrame(records)
 
-    return df
+    return df, file_hash
 
-
-def parse_wifi_log_extended(log_text: str):
+def parse_wifi_log_extended(log_text: str, file_hash: str):
     """
     Parse ADB Wi-Fi diagnostic logs including:
       - SSID/BSSID connection info
@@ -469,8 +491,6 @@ def parse_wifi_log_extended(log_text: str):
         re.DOTALL
     )
 
-
-
     mlink_records = [m.groupdict() for m in mlink_pattern.finditer(log_text)]
 
     # Convert to DataFrames
@@ -483,12 +503,12 @@ def parse_wifi_log_extended(log_text: str):
     if mlink_records:
         dfs["mlink_info"] = pd.DataFrame(mlink_records)
 
-    return dfs
-
+    return dfs, file_hash
 
 def parse_location_data(loc_path):
     with open(loc_path, 'r', encoding="utf-8") as f:
         log_text = f.read()
+        file_hash = hash_binary_data(log_text.encode('utf-8'))
     
     regex = re.compile(
         r'Location\[(?:provider=)?(?P<provider>[\w\-]+)?\s*'
@@ -521,6 +541,49 @@ def parse_location_data(loc_path):
         print(f" Parsed {len(df)} location entries.")
         print(df)
 
+    return df, file_hash
+
+def parse_trust_manager_states(log_text, file_hash):
+    """
+    Parse Android Trust Manager states from forensic dump text.
+    Returns DataFrame with trust state information.
+    """
+    trust_states = []
+    
+    # Regex pattern to match trust manager state lines
+    pattern = re.compile(
+        r'User\s+"(?P<user_name>[^"]+)"\s+'
+        r'\(id=(?P<user_id>\d+),\s*flags=(?P<flags>0x[0-9a-fA-F]+)\)\s*'
+        r'\(current\):\s*'
+        r'trustState=(?P<trust_state>\w+),\s*'
+        r'trustManaged=(?P<trust_managed>\d+),\s*'
+        r'deviceLocked=(?P<device_locked>\d+),\s*'
+        r'isActiveUnlockRunning=(?P<active_unlock_running>\d+),\s*'
+        r'strongAuthRequired=(?P<strong_auth_required>0x[0-9a-fA-F]+)',
+        re.IGNORECASE
+    )
+    
+    for line in log_text.splitlines():
+        line = line.strip()
+        match = pattern.search(line)
+        if match:
+            trust_states.append({
+                "User Name": match.group("user_name"),
+                "User ID": int(match.group("user_id")),
+                "Flags": match.group("flags"),
+                "Trust State": match.group("trust_state"),
+                "Trust Managed": bool(int(match.group("trust_managed"))),
+                "Device Locked": bool(int(match.group("device_locked"))),
+                "Active Unlock Running": bool(int(match.group("active_unlock_running"))),
+                "Strong Auth Required": match.group("strong_auth_required")
+            })
+    
+    # Convert to DataFrame
+    df = pd.DataFrame(trust_states)
+    
+    return df, file_hash
+
+
 log_files = {
     "Account Information": "account_information.txt",
     "Bluetooth Information": "bluetooth_information.txt",
@@ -540,13 +603,17 @@ column_headers = {
 # Function that builds the forensic report and saves it
 # ----------------------------------------------------------------
 log_files = {
+    "Basic Device Properties": "basic_device_info.txt",
     "Account Information": "account_information.txt",
     "Bluetooth Information": "bluetooth_information.txt",
     "Device Properties": "device_properties.txt",
     "Sensor Data": "sensor_data.txt",
     "Ip information": "ip_address_information.txt",
     "WiFi Information": "wifi_information.txt",
-    "Location Information": "dumpsys_location.txt"
+    "Location Information": "dumpsys_location.txt",
+    "Trust Manager": "trust_information.txt",
+    "Notification Information": "notification_information.txt",
+    "Keystore Information": "keystore_information.txt"
 }
 
 # ---------------- Forensic Report Generation ----------------
@@ -558,39 +625,95 @@ def generate_forensic_report(output_dir="downloads"):
     doc = docx.Document()
     doc.add_paragraph("Preliminary Forensic Report", style='Title')
     
+    # Initialize hash collection
+    all_hashes = []
     
+    # ---- Basic device properties --------
+    basic_prop_text, basic_prop_hash = get_file_from_mongo(log_files["Basic Device Properties"])
+    if basic_prop_text.strip():
+        # Split lines like "Key: Value" into a 2-column DataFrame
+        basic_props = []
+        for line in basic_prop_text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if ':' in line:
+                key, value = map(str.strip, line.split(':', 1))
+                basic_props.append({"Property": key, "Value": value})
+            else:
+                # Handle cases without colon
+                basic_props.append({"Property": line, "Value": ""})
+        basic_props_df = pd.DataFrame(basic_props)
+        add_dataframe_to_doc(doc, basic_props_df, "Basic Device Properties")
+        all_hashes.append({"File": "basic_device_info.txt", "SHA256 Hash": basic_prop_hash})
+    else:
+        doc.add_paragraph("Basic Device Properties - No data found.\n", style='Heading3')
+
     # --- Account Info ---
-    acc_text = get_file_from_mongo(log_files["Account Information"])
-    acc_df, service_df = parse_account_info(acc_text)
+    acc_text, acc_hash = get_file_from_mongo(log_files["Account Information"])
+    acc_df, service_df, acc_hash = parse_account_info(acc_text, acc_hash)
     add_dataframe_to_doc(doc, acc_df, "Account Information")
     add_dataframe_to_doc(doc, service_df, "Service Information")
+    all_hashes.append({"File": "account_information.txt", "SHA256 Hash": acc_hash})
 
     # --- Wi-Fi Info ---
-    wifi_text = get_file_from_mongo(log_files["WiFi Information"])
-    wifi_df_dict = parse_wifi_log_extended(wifi_text)
+    wifi_text, wifi_hash = get_file_from_mongo(log_files["WiFi Information"])
+    wifi_df_dict, wifi_hash = parse_wifi_log_extended(wifi_text, wifi_hash)
     for section_name, df in wifi_df_dict.items():
         add_dataframe_to_doc(doc, df, f"Wi-Fi: {section_name.replace('_', ' ').title()}")
+    all_hashes.append({"File": "wifi_information.txt", "SHA256 Hash": wifi_hash})
 
     # --- Bluetooth Info ---
-    bt_text = get_file_from_mongo(log_files["Bluetooth Information"])
-    df_bonded = parse_bluetooth_log(doc, bt_text)
+    bt_text, bt_hash = get_file_from_mongo(log_files["Bluetooth Information"])
+    df_bonded, bt_hash = parse_bluetooth_log(doc, bt_text, bt_hash)
     add_dataframe_to_doc(doc, df_bonded, "Bonded Bluetooth Devices")
+    all_hashes.append({"File": "bluetooth_information.txt", "SHA256 Hash": bt_hash})
 
     # --- Location Info ---
-    loc_text = get_file_from_mongo(log_files["Location Information"])
-    loc_df = get_location_text(loc_text)
+    loc_text, loc_hash = get_file_from_mongo(log_files["Location Information"])
+    loc_df, loc_hash = get_location_text(loc_text, loc_hash)
     add_dataframe_to_doc(doc, loc_df, "Location Information")
+    all_hashes.append({"File": "dumpsys_location.txt", "SHA256 Hash": loc_hash})
 
     # --- Sensor Data ---
-    sensor_text = get_file_from_mongo(log_files["Sensor Data"])
-    sensor_dataframes = extract_sensor_data(sensor_text)
+    sensor_text, sensor_hash = get_file_from_mongo(log_files["Sensor Data"])
+    sensor_dataframes, sensor_hash = extract_sensor_data(sensor_text, sensor_hash)
     for sensor_name, df in sensor_dataframes.items():
         add_dataframe_to_doc(doc, df, sensor_name)
+    all_hashes.append({"File": "sensor_data.txt", "SHA256 Hash": sensor_hash})
 
     # --- IP Info ---
-    ip_text = get_file_from_mongo(log_files["Ip information"])
-    ip_df = extract_ip_info(ip_text)
+    ip_text, ip_hash = get_file_from_mongo(log_files["Ip information"])
+    ip_df, ip_hash = extract_ip_info(ip_text, ip_hash)
     add_dataframe_to_doc(doc, ip_df, "IP Address Information")
+    all_hashes.append({"File": "ip_address_information.txt", "SHA256 Hash": ip_hash})
+
+    # --- Trust Manager Information ---
+
+    trust_text, trust_hash = get_file_from_mongo(log_files["Trust Manager"])
+    trust_df, trust_hash = parse_trust_manager_states(trust_text, trust_hash)
+    add_dataframe_to_doc(doc, trust_df, "Trust Manager State Information")
+    all_hashes.append({"File": "trust_manager_states.txt", "SHA256 Hash": trust_hash})
+    
+    # --- adding hashing not summarized ---
+    keystore_text, keystore_hash = get_file_from_mongo(log_files["Keystore Information"])
+    all_hashes.append(({"File": "keystore_information.txt", "SHA256 Hash": keystore_hash}))
+    
+    notification_text, notification_hash = get_file_from_mongo(log_files["Notification Information"])
+    all_hashes.append(({"File": "notification_information.txt", "SHA256 Hash": notification_hash}))
+
+    # --- Add all hashes in one table at the end ---
+    doc.add_paragraph("File Integrity Information", style='Heading1')
+    doc.add_paragraph("SHA256 Hashes of All Analyzed Files", style='Heading2')
+
+    
+    if all_hashes:
+        # Create combined hash DataFrame
+        hash_df = pd.DataFrame(all_hashes)
+        hash_df["Analysis Date"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        add_dataframe_to_doc(doc, hash_df, "File Integrity Hashes")
+    else:
+        doc.add_paragraph("No file integrity information available.", style='Heading3')
 
     # Save to DOCX
     doc.save(output_path)
@@ -611,7 +734,7 @@ def download_report():
 
 
 # ---------------- Helper for location text ----------------
-def get_location_text(location_text):
+def get_location_text(location_text, file_hash):
     """Parse location text from MongoDB (previously from file)."""
     regex = re.compile(
         r'Location\[(?:provider=)?(?P<provider>[\w\-]+)?\s*'
@@ -628,7 +751,10 @@ def get_location_text(location_text):
             "longitude": float(m.group("lon")),
             "accuracy": float(m.group("acc")) if m.group("acc") else None
         })
-    return pd.DataFrame(records)
+    
+    df = pd.DataFrame(records)
+    
+    return df, file_hash
 
 # ---------------- Main ----------------
 if __name__ == "__main__":

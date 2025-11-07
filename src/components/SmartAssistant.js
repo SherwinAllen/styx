@@ -49,7 +49,7 @@ const SmartAssistant = () => {
   const [otpDigits, setOtpDigits] = useState(Array(6).fill(''));
   const inputsRef = useRef([]);
 
-  const teamInfo = `Team Name: paidRTOS\nTeam Members:\n\t1. Shambo Sarkar\n\t2. Sathvik S\n\t3. Sherwin Allen\n\t4. Meeran Ahmed`;
+  const teamInfo = "Tool Name: StyX\nMembers:\n\tDr Sapna VM \n\tShambo Sarkar\n\tSathvik S\n\tSherwin Allen\n\tMeeran Ahmed \n\tDr Prasad B Honnavalli";
 
   useEffect(() => {
     let currentIndex = 0;

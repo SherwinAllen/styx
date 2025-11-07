@@ -10,7 +10,7 @@ import SmartWatch from './components/SmartWatch';
 const App = () => (
   <Router>
     <Routes>
-      <Route path="/" element={<LoginPage />} />
+      <Route path="/" element={<IoTExtractor/>} />
       <Route path="/caseinfo" element={<CaseInfo />} />
       <Route path="/iotextractor" element={<IoTExtractor />} />
       <Route path="/:deviceName" element={<DevicePage />} />

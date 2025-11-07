@@ -74,7 +74,6 @@ const TreeNode = ({ node, depth = 0, onFileClick, selectedFile }) => {
       }}
       onClick={() => onFileClick(node)}
     >
-      <span style={{ marginRight: "8px", fontFamily: "'Orbitron', sans-serif"}}>📄</span>
       <span style={{ 
       fontFamily: "'Orbitron', monospace, sans-serif",  // ✅ APPLY FONT TO NAME
       fontWeight: "500"
@@ -171,7 +170,7 @@ const TreeNode = ({ node, depth = 0, onFileClick, selectedFile }) => {
         paddingBottom: "12px"
       }}>
         <div style={{ fontWeight: "bold", color: "#00ff1eff", fontSize: "16px" }}>
-          📄 <span style={{ 
+          <span style={{ 
               fontFamily: "'Orbitron', monospace, sans-serif",  // ✅ APPLY FONT TO NAME
               fontWeight: "500"
             }}>
@@ -312,35 +311,6 @@ const TreeNode = ({ node, depth = 0, onFileClick, selectedFile }) => {
                   />
                   Your browser does not support the audio element.
                 </audio>
-                
-                <button
-                  onClick={() => {
-                    const byteCharacters = atob(content.content);
-                    const byteNumbers = new Array(byteCharacters.length);
-                    for (let i = 0; i < byteCharacters.length; i++) {
-                      byteNumbers[i] = byteCharacters.charCodeAt(i);
-                    }
-                    const byteArray = new Uint8Array(byteNumbers);
-                    const blob = new Blob([byteArray], { type: content.mimeType || 'audio/mpeg' });
-                    
-                    const link = document.createElement('a');
-                    link.href = URL.createObjectURL(blob);
-                    link.download = file.name;
-                    link.click();
-                    URL.revokeObjectURL(link.href);
-                  }}
-                  style={{
-                    background: "#444",
-                    border: "none",
-                    color: "#1dfb00ff",
-                    padding: "8px 16px",
-                    borderRadius: "4px",
-                    cursor: "pointer",
-                    fontSize: "12px"
-                  }}
-                >
-                  Download Audio
-                </button>
               </div>
             )}
 
@@ -384,7 +354,35 @@ const TreeNode = ({ node, depth = 0, onFileClick, selectedFile }) => {
                 </button>
               </div>
             )}
-
+            {content?.hash && (
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                background: "#1a1a1a",
+                padding: "6px 10px",
+                borderRadius: "4px",
+                border: "1px solid #333",
+                marginBottom: "10px",
+                color: "#0aff0a",
+                fontFamily: "'Monaco', monospace",
+                fontSize: "12px"
+              }}>
+                <span>SHA-256: {content.hash}</span>
+                <button
+                  onClick={() => navigator.clipboard.writeText(content.hash)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#00ff1a",
+                    cursor: "pointer",
+                    fontSize: "12px"
+                  }}
+                >
+                  Copy
+                </button>
+              </div>
+            )}
             {/* No Content Available */}
             {!content.content && (
               <div style={{ textAlign: "center", color: "#ff6b6b", padding: "20px" }}>
@@ -533,7 +531,7 @@ export const FileSystem = () => {
 
   if (loading) return (
     <div style={{ background: "#111", color: "#fff", padding: "20px", minHeight: "100vh" }}>
-      <h2 style={{ color: "#09ff00ff", marginBottom: "20px", fontFamily: "'Orbitron', sans-serif"}}>📱 Smartwatch Filesystem</h2>
+      <h2 style={{ color: "#09ff00ff", marginBottom: "20px", fontFamily: "'Orbitron', sans-serif"}}>Smartwatch Filesystem</h2>
       <div style={{ color: "#aaa", marginBottom: "20px" }}>
         <p>Loading filesystem...</p>
         {progress.status && (
@@ -559,7 +557,7 @@ export const FileSystem = () => {
 
   if (error) return (
     <div style={{ background: "#111", color: "#fff", padding: "20px", minHeight: "100vh" }}>
-      <h2 style={{ color: "#00ff11ff", marginBottom: "20px", fontFamily: "'Orbitron', sans-serif"}}>📱 Smartwatch Filesystem</h2>
+      <h2 style={{ color: "#00ff11ff", marginBottom: "20px", fontFamily: "'Orbitron', sans-serif"}}>Smartwatch Filesystem</h2>
       <div style={{ color: "#f44336", marginBottom: "20px" }}>
         <p><strong>Error:</strong> {error}</p>
       </div>
@@ -577,7 +575,7 @@ export const FileSystem = () => {
 
   if (!tree) return (
     <div style={{ background: "#111", color: "#fff", padding: "20px", minHeight: "100vh" }}>
-      <h2 style={{ color: "#00ff1aff", marginBottom: "20px", fontFamily: "'Orbitron', sans-serif" }}>📱 Smartwatch Filesystem</h2>
+      <h2 style={{ color: "#00ff1aff", marginBottom: "20px", fontFamily: "'Orbitron', sans-serif" }}>Smartwatch Filesystem</h2>
       <p style={{ color: "#f44336" }}>No filesystem data received</p>
     </div>
   );
@@ -590,7 +588,7 @@ export const FileSystem = () => {
       fontFamily: "Arial, sans-serif",
       minHeight: "100vh" 
     }}>
-      <h2 style={{ color: "#00ff1aff", marginBottom: "20px", fontFamily: "'Orbitron', sans-serif" }}>📱 Smartwatch Filesystem</h2>
+      <h2 style={{ color: "#00ff1aff", marginBottom: "20px", fontFamily: "'Orbitron', sans-serif" }}>Smartwatch Filesystem</h2>
       
       {progress.status && progress.status !== "Complete!" && (
         <div style={{ 
