@@ -1,5 +1,5 @@
 
-**Prequisites**
+**Prequisites:**
 - Download MongoDB Community Server - https://www.mongodb.com/try/download/community
 - Connect through mongoDB compass.
 - Start a database instance at localhost to store forensic artifacts
