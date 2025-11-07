@@ -1,4 +1,5 @@
 To get started with this project, follow these steps:
+\n
 **Prequisites**
 Have MongoDB backend server running in the localhost
 
