@@ -64,7 +64,7 @@ This tool unifies two distinct IoT forensic workflows—Android-based Smartwatch
 
 ## Smartwatch Module
 
-The Smartwatch module operates using wireless ADB through the standard developer mode, allowing investigators to collect data without the need to root or modify the device. 
+The Smartwatch module operates using wireless ADB through the standard developer mode, allowing investigators to collect data without the need to root or modify the device. The watch used in the testing of this pipeline is the WearOS galaxy watch 4.
 
 It is capable of extracting a wide range of forensic artifacts, including:
 - System logs  
