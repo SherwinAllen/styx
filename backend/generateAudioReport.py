@@ -452,11 +452,11 @@ def generate_html_report(audio_data_map, output_file="smart_assistant_report.htm
                     <div class="empty-icon"></div>
                     <h2 class="empty-title">No Amazon Smart Assistant Voice Activities Found</h2>
                     <div class="empty-description">
-                        <p>No voice interactions were found in your Smart Assistant history for the selected time period (Last 7 days).</p>
+                        <p>No voice interactions were found in your Smart Assistant history for the selected time period.</p>
                         <p style="margin-top: 15px;">This could be because:</p>
                         <ul style="text-align: left; max-width: 400px; margin: 20px auto;">
                             <li>No voice commands were issued to Smart Assistant devices</li>
-                            <li>Activities are outside the 7-day search window</li>
+                            <li>Activities are outside the selected search window</li>
                             <li>Your account has voice history disabled</li>
                             <li>Technical issues with data retrieval</li>
                         </ul>
