@@ -12,6 +12,8 @@ import hashlib
 import sys
 from dotenv import load_dotenv
 import requests
+# ── NEW: human-like interaction helpers ──────────────────────────────────────
+from human_interaction import human_type, human_click
 
 # Load environment variables
 load_dotenv()
@@ -383,6 +385,155 @@ def is_true_re_auth_scenario(driver):
     except:
         return False
 
+def is_on_slider_puzzle_page(driver):
+    """Detect if we're on a slider puzzle anti-bot page"""
+    try:
+        print('Checking for slider puzzle page...')
+        
+        page_source = driver.page_source.lower()
+        
+        # Common slider puzzle indicators
+        puzzle_indicators = [
+            'slide to verify',
+            'slider',
+            'antirobot',
+            'anti-robot',
+            'verify you are human',
+            'drag to verify',
+            'swipe to verify',
+            'security check',
+            'puzzle'
+        ]
+        
+        # Check page source for puzzle indicators
+        for indicator in puzzle_indicators:
+            if indicator in page_source:
+                print(f'PUZZLE DETECTED: Found indicator: "{indicator}"')
+                return True
+        
+        # Check for common slider puzzle elements/attributes
+        slider_selectors = [
+            'div[class*="slider"]',
+            'div[class*="puzzle"]',
+            'div[id*="slider"]',
+            'div[id*="puzzle"]',
+            'div[data-a-target*="slider"]',
+            'div[class*="antirobot"]',
+            'div[class*="verify"]'
+        ]
+        
+        for selector in slider_selectors:
+            try:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                if elements and len(elements) > 0:
+                    # Check if element is visible
+                    if elements[0].is_displayed():
+                        print(f'PUZZLE DETECTED: Found slider element with selector: {selector}')
+                        return True
+            except:
+                continue
+        
+        # Check for iframe-based puzzles (often used by bot protection services)
+        try:
+            iframes = driver.find_elements(By.CSS_SELECTOR, 'iframe')
+            for iframe in iframes:
+                if iframe.is_displayed():
+                    iframe_src = iframe.get_attribute('src') or ''
+                    iframe_id = iframe.get_attribute('id') or ''
+                    iframe_class = iframe.get_attribute('class') or ''
+                    
+                    puzzle_keywords = ['puzzle', 'slider', 'verify', 'challenge', 'antirobot', 'captcha']
+                    if any(keyword in (iframe_src + iframe_id + iframe_class).lower() for keyword in puzzle_keywords):
+                        print(f'PUZZLE DETECTED: Found puzzle iframe')
+                        return True
+        except:
+            pass
+        
+        return False
+    except Exception as error:
+        print(f'Error checking for slider puzzle: {error}')
+        return False
+
+def wait_for_puzzle_completion(driver, timeout=300):
+    """Wait for user to manually complete the slider puzzle - HEADLESS MODE ONLY"""
+    print('Waiting for slider puzzle completion...')
+    print('This requires manual interaction. Please complete the puzzle in the browser.')
+    
+    start_time = time.time()
+    last_check_time = start_time
+    
+    try:
+        while time.time() - start_time < timeout:
+            time.sleep(3)
+            
+            # Check if puzzle is gone (completed)
+            if not is_on_slider_puzzle_page(driver):
+                print('SUCCESS: Puzzle has been completed!')
+                return True
+            
+            # Give feedback every 30 seconds
+            current_time = time.time()
+            if current_time - last_check_time >= 30:
+                remaining_time = int(timeout - (current_time - start_time))
+                print(f'Still waiting for puzzle completion ({remaining_time}s remaining)...')
+                last_check_time = current_time
+        
+        print('FAILED: Timeout waiting for puzzle completion')
+        return False
+        
+    except Exception as error:
+        print(f'Error while waiting for puzzle: {error}')
+        return False
+
+def handle_puzzle_challenge(driver):
+    """Detect and handle the slider puzzle challenge - manual intervention only in non-headless mode"""
+    try:
+        print('Checking for anti-bot puzzle challenge...')
+        
+        if not is_on_slider_puzzle_page(driver):
+            print('No puzzle detected, proceeding normally')
+            return True
+        
+        # Puzzle detected
+        print('PUZZLE CHALLENGE DETECTED: Amazon has triggered anti-bot puzzle verification')
+        print('This typically indicates that delays were insufficient to fully bypass bot detection')
+        
+        # Check if we're in headless mode
+        headless = os.getenv('HEADLESS', 'true').lower() == 'true'
+        
+        if headless:
+            # In headless mode, we cannot allow manual intervention
+            print('ERROR: Puzzle detected in HEADLESS MODE')
+            print('       Manual puzzle completion is not possible in headless mode')
+            print('       This indicates bot detection was triggered despite human-like delays')
+            print('       Failing authentication')
+            update_server_status(
+                message='Slider puzzle detected in headless mode - cannot proceed without manual intervention',
+                error_type='PUZZLE_REQUIRED'
+            )
+            return False
+        else:
+            # In non-headless mode, allow manual intervention
+            print('HEADLESS MODE OFF: Browser is visible - allowing manual puzzle completion')
+            puzzle_completed = wait_for_puzzle_completion(driver)
+            if puzzle_completed:
+                update_server_status(message='Puzzle completed successfully')
+                return True
+            else:
+                update_server_status(
+                    message='Puzzle completion timeout or failed',
+                    error_type='PUZZLE_TIMEOUT'
+                )
+                return False
+            
+    except Exception as error:
+        print(f'Error handling puzzle challenge: {error}')
+        update_server_status(
+            message=f'Error during puzzle handling: {error}',
+            error_type='PUZZLE_ERROR'
+        )
+        return False
+
 def fill_otp_and_submit(driver, otp):
     """Fill OTP and submit with REDIRECTION-BASED validation"""
     try:
@@ -703,47 +854,61 @@ def check_for_chrome_passkey_modal(driver):
         print(f"WARNING: Error checking for Chrome passkey modal: {e}")
         return False
 
+# ── MODIFIED: perform_full_authentication now uses human_type / human_click ──
 def perform_full_authentication(driver):
-    """Perform full authentication with real-time server updates"""
+    """Perform full authentication with human-like interactions to bypass bot detection"""
     try:
-        print('Starting full authentication process...')
+        import random as _random
+        print('Starting full authentication process (human-like mode)...')
         update_server_status(message='Verifying Account Credentials...')
-        
+
         if is_manual_mode():
             print('MANUAL MODE: You may need to complete authentication steps in the browser')
 
+        # ── Step 1: Email ─────────────────────────────────────────────────────
         email_filled = False
-        try:
-            email_selectors = ['#ap_email', 'input[name="email"]', 'input[type="email"]']
-            for selector in email_selectors:
-                try:
-                    element = driver.find_element(By.CSS_SELECTOR, selector)
-                    if element:
-                        element.clear()
-                        element.send_keys(AMAZON_EMAIL)
-                        email_filled = True
-                        
-                        continue_selectors = ['input#continue', 'button#continue', 'input[name="continue"]']
-                        for cont_sel in continue_selectors:
-                            try:
-                                cont_element = driver.find_element(By.CSS_SELECTOR, cont_sel)
-                                if cont_element:
-                                    cont_element.click()
-                                    time.sleep(2)
-                                    break
-                            except:
-                                continue
-                        break
-                except:
-                    continue
-        except Exception as e:
-            print(f'FAILED: Email fill failed: {e}')
-            update_server_status(message='Email entry failed', error_type='GENERIC_ERROR')
+        email_selectors = ['#ap_email', 'input[name="email"]', 'input[type="email"]']
+        for selector in email_selectors:
+            try:
+                element = driver.find_element(By.CSS_SELECTOR, selector)
+                if element:
+                    print('Filling email with human-like typing...')
+                    human_type(driver, element, AMAZON_EMAIL)
+                    email_filled = True
+
+                    continue_selectors = [
+                        'span#continue input.a-button-input',
+                        'span#continue',
+                        'input#continue',
+                        'button#continue',
+                        'input[name="continue"]'
+                    ]
+                    clicked = False
+                    for cont_sel in continue_selectors:
+                        try:
+                            cont_element = driver.find_element(By.CSS_SELECTOR, cont_sel)
+                            if cont_element:
+                                print(f'Clicking Continue with human-like interaction ({cont_sel})...')
+                                human_click(driver, cont_element)
+
+                                post_click_delay = _random.uniform(2.8, 4.5)
+                                print(f'Waiting {post_click_delay:.2f}s for page transition...')
+                                time.sleep(post_click_delay)
+                                clicked = True
+                                break
+                        except:
+                            continue
+
+                    if not clicked:
+                        print('WARNING: Could not click continue button with standard selectors')
+                    break
+            except:
+                continue
 
         if not email_filled:
             print('WARNING: Could not find email field, checking if already on password page...')
 
-        time.sleep(2)
+        time.sleep(_random.uniform(1.5, 2.5))
 
         # Only check for email-specific errors, not unknown 2FA
         email_error = check_for_auth_errors(driver, context='email_only')
@@ -753,46 +918,52 @@ def perform_full_authentication(driver):
                 error_type='INVALID_EMAIL'
             )
             raise Exception('INVALID_EMAIL')
-        
+
+        # ── Step 2: Password ──────────────────────────────────────────────────
         password_filled = False
-        try:
-            pass_selectors = ['#ap_password', 'input[name="password"]', 'input[type="password"]']
-            for selector in pass_selectors:
-                try:
-                    element = driver.find_element(By.CSS_SELECTOR, selector)
-                    if element:
-                        element.clear()
-                        element.send_keys(AMAZON_PASSWORD)
-                        password_filled = True
-                        
-                        # Check for Chrome passkey modal before submitting
-                        if check_for_chrome_passkey_modal(driver):
-                            print("INFO: Chrome passkey modal detected and handled - proceeding with password submission")
-                        
-                        sign_selectors = ['input#signInSubmit', 'button#signInSubmit', 'button[name="signIn"]', 'input[type="submit"]']
-                        for sign_sel in sign_selectors:
-                            try:
-                                sign_element = driver.find_element(By.CSS_SELECTOR, sign_sel)
-                                if sign_element:
-                                    print("INFO: Submitting password form and handling Chrome passkey modal...")
-                                    sign_element.click()
-                                    update_server_status(message='Submitting credentials...')
-                                    break
-                            except:
-                                continue
-                        break
-                except:
-                    continue
-        except Exception as e:
-            print(f'FAILED: Password fill failed: {e}')
-            update_server_status(message='Password entry failed', error_type='GENERIC_ERROR')
+        pass_selectors = ['#ap_password', 'input[name="password"]', 'input[type="password"]']
+        for selector in pass_selectors:
+            try:
+                element = driver.find_element(By.CSS_SELECTOR, selector)
+                if element:
+                    print('Filling password with human-like typing...')
+                    human_type(driver, element, AMAZON_PASSWORD)
+                    password_filled = True
+
+                    if check_for_chrome_passkey_modal(driver):
+                        print("INFO: Chrome passkey modal detected — proceeding with password submission")
+
+                    sign_selectors = ['input#signInSubmit', 'button#signInSubmit', 'button[name="signIn"]', 'input[type="submit"]']
+                    for sign_sel in sign_selectors:
+                        try:
+                            sign_element = driver.find_element(By.CSS_SELECTOR, sign_sel)
+                            if sign_element:
+                                print(f'Clicking Sign-In with human-like interaction ({sign_sel})...')
+                                human_click(driver, sign_element)
+                                update_server_status(message='Submitting credentials...')
+                                break
+                        except:
+                            continue
+                    break
+            except:
+                continue
 
         if not password_filled:
             print('WARNING: Could not find password field, checking current authentication state...')
 
-        time.sleep(3)
+        # Give Amazon time to process and decide whether to show puzzle / 2FA.
+        time.sleep(_random.uniform(2.5, 4.0))
 
-        # Now check for all auth errors including unknown 2FA (after password submission)
+        # CRITICAL: Check for anti-bot puzzle BEFORE checking for standard 2FA
+        puzzle_result = handle_puzzle_challenge(driver)
+        if not puzzle_result:
+            update_server_status(
+                message='Failed to complete puzzle verification',
+                error_type='PUZZLE_ERROR'
+            )
+            raise Exception('Puzzle verification failed')
+
+        # Now check for standard authentication errors after potential puzzle completion
         auth_error = check_for_auth_errors(driver)
         if auth_error == 'INVALID_EMAIL':
             update_server_status(
@@ -812,7 +983,8 @@ def perform_full_authentication(driver):
                 error_type='UNKNOWN_2FA_PAGE'
             )
             raise Exception('UNKNOWN_2FA_PAGE')
-        
+
+        # ── Step 3: 2FA ───────────────────────────────────────────────────────
         if is_on_2fa_page(driver):
             method = detect_2fa_method(driver)
             print(f'2FA detected -> {method}')
@@ -822,14 +994,14 @@ def perform_full_authentication(driver):
                 current_url=driver.current_url,
                 show_otp_modal=(method and 'otp' in method.lower())
             )
-            
+
             if is_unknown_2fa_page(driver):
                 update_server_status(
                     message='This account requires additional verification that cannot be automated',
                     error_type='UNKNOWN_2FA_PAGE'
                 )
                 raise Exception('UNKNOWN_2FA_PAGE')
-            
+
             if method and 'otp' in method.lower():
                 print('OTP authentication required')
                 update_server_status(message='Waiting for OTP input...', show_otp_modal=True)
@@ -869,11 +1041,11 @@ def perform_full_authentication(driver):
                 current_url=driver.current_url
             )
             raise Exception('Failed to reach target page after authentication')
-        
+
         print('SUCCESS: Authentication completed successfully')
         update_server_status(message='Authentication completed successfully', current_url=driver.current_url)
         return on_target
-        
+
     except Exception as err:
         if any(error in str(err) for error in ['INVALID_EMAIL', 'INCORRECT_PASSWORD', 'INVALID_OTP', 'PUSH_NOTIFICATION_DENIED', 'UNKNOWN_2FA_PAGE']):
             raise err
@@ -884,55 +1056,52 @@ def perform_full_authentication(driver):
         )
         return False
 
+# ── MODIFIED: handle_re_auth now uses human_type / human_click ───────────────
 def handle_re_auth(driver):
-    """Enhanced re-authentication with real-time server updates"""
+    """Enhanced re-authentication with human-like interactions"""
     try:
+        import random as _random
         print('Starting re-authentication process...')
         update_server_status(message='Starting re-authentication process...')
-        
+
         if is_manual_mode():
             print('MANUAL MODE: You may need to complete re-authentication in the browser')
 
         password_filled = False
-        try:
-            pass_selectors = ['#ap_password', 'input[name="password"]', 'input[type="password"]']
-            for selector in pass_selectors:
-                try:
-                    element = driver.find_element(By.CSS_SELECTOR, selector)
-                    if element:
-                        element.clear()
-                        element.send_keys(AMAZON_PASSWORD)
-                        password_filled = True
-                        print('SUCCESS: Password entered successfully')
-                        
-                        # Check for Chrome passkey modal before submitting
-                        if check_for_chrome_passkey_modal(driver):
-                            print("INFO: Chrome passkey modal detected and handled during re-auth - proceeding with password submission")
-                        
-                        sign_selectors = ['input#signInSubmit', 'button#signInSubmit', 'button[name="signIn"]', 'input[type="submit"]']
-                        for sign_sel in sign_selectors:
-                            try:
-                                sign_element = driver.find_element(By.CSS_SELECTOR, sign_sel)
-                                if sign_element:
-                                    print("INFO: Submitting re-authentication password and handling Chrome passkey modal...")
-                                    sign_element.click()
-                                    print('Submitted re-authentication credentials...')
-                                    update_server_status(message='Submitted re-authentication credentials...')
-                                    break
-                            except:
-                                continue
-                        break
-                except:
-                    continue
-        except Exception as e:
-            print(f'FAILED: Password fill failed during re-auth: {e}')
-            update_server_status(message='Password entry failed during re-authentication', error_type='GENERIC_ERROR')
-        
+        pass_selectors = ['#ap_password', 'input[name="password"]', 'input[type="password"]']
+        for selector in pass_selectors:
+            try:
+                element = driver.find_element(By.CSS_SELECTOR, selector)
+                if element:
+                    print('Filling password with human-like typing (re-auth)...')
+                    human_type(driver, element, AMAZON_PASSWORD)
+                    password_filled = True
+                    print('SUCCESS: Password entered successfully')
+
+                    if check_for_chrome_passkey_modal(driver):
+                        print("INFO: Chrome passkey modal detected during re-auth — proceeding with password submission")
+
+                    sign_selectors = ['input#signInSubmit', 'button#signInSubmit', 'button[name="signIn"]', 'input[type="submit"]']
+                    for sign_sel in sign_selectors:
+                        try:
+                            sign_element = driver.find_element(By.CSS_SELECTOR, sign_sel)
+                            if sign_element:
+                                print(f'Clicking Sign-In with human-like interaction ({sign_sel})...')
+                                human_click(driver, sign_element)
+                                print('Submitted re-authentication credentials...')
+                                update_server_status(message='Submitted re-authentication credentials...')
+                                break
+                        except:
+                            continue
+                    break
+            except:
+                continue
+
         if not password_filled:
             print('WARNING: Could not find password field during re-auth')
 
-        time.sleep(2)
-        
+        time.sleep(_random.uniform(2.0, 3.5))
+
         print('Checking for re-authentication errors...')
         auth_error = check_for_auth_errors(driver)
         if auth_error == 'INCORRECT_PASSWORD':
@@ -948,7 +1117,7 @@ def handle_re_auth(driver):
             )
             raise Exception('UNKNOWN_2FA_PAGE')
         print('SUCCESS: Re-authentication validation passed')
-        
+
         if is_on_2fa_page(driver):
             method = detect_2fa_method(driver)
             print(f'2FA detected during re-auth -> {method}')
@@ -958,14 +1127,14 @@ def handle_re_auth(driver):
                 current_url=driver.current_url,
                 show_otp_modal=(method and 'otp' in method.lower())
             )
-            
+
             if is_unknown_2fa_page(driver):
                 update_server_status(
                     message='Unknown 2FA page detected during re-authentication',
                     error_type='UNKNOWN_2FA_PAGE'
                 )
                 raise Exception('UNKNOWN_2FA_PAGE')
-            
+
             if method and 'otp' in method.lower():
                 print('OTP authentication required for re-auth')
                 update_server_status(message='OTP authentication required for re-auth', show_otp_modal=True)
@@ -994,7 +1163,7 @@ def handle_re_auth(driver):
                         error_type='GENERIC_ERROR'
                     )
                     raise Exception('Push notification approval failed during re-auth')
-        
+
         print('Verifying re-authentication success...')
         on_target = is_on_target_page(driver)
         if not on_target:
@@ -1004,11 +1173,11 @@ def handle_re_auth(driver):
                 error_type='GENERIC_ERROR',
                 current_url=driver.current_url
             )
-        
+
         print('SUCCESS: Re-authentication completed successfully')
         update_server_status(message='Re-authentication completed successfully')
         return on_target
-        
+
     except Exception as err:
         if any(error in str(err) for error in ['INCORRECT_PASSWORD', 'INVALID_OTP', 'PUSH_NOTIFICATION_DENIED', 'UNKNOWN_2FA_PAGE']):
             raise err
@@ -1225,6 +1394,11 @@ def main():
             update_server_status(
                 message='Unknown 2FA page detected - account requires additional verification',
                 error_type='UNKNOWN_2FA_PAGE'
+            )
+        elif 'PUZZLE' in str(error):
+            update_server_status(
+                message='Slider puzzle verification required - manual interaction needed',
+                error_type='PUZZLE_REQUIRED'
             )
         else:
             update_server_status(

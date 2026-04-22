@@ -250,7 +250,7 @@ def process_all_audio_files():
         else:
             delay = 0  # No delay if things are going well
         
-        print(f"⏳ Waiting {delay} seconds before next download...")
+        print(f"Waiting {delay} seconds before next download...")
         time.sleep(delay)
     
     print(f"\n GUARANTEED DOWNLOAD SUMMARY:")
