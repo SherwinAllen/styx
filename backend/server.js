@@ -686,14 +686,19 @@ function cleanupPreviousPipelineFiles() {
 
 // POST entrypoint from frontend SmartAssistant to start headless pipeline
 app.post('/api/packet-report', (req, res) => {
-  const { email, password, source } = req.body;
+  const { email, password, source, dateFilter } = req.body;
   console.log('Received email:', email);
   console.log('Received password:', password ? '***' : null);
   console.log('Request came from:', source);
+  console.log('Date filter:', dateFilter);
 
   if (source !== 'SmartAssistant') {
     return res.status(400).send('Invalid source');
   }
+
+  // Validate/normalize dateFilter - fall back to "last_7_days" if missing or invalid
+  const validDateFilters = ['today', 'yesterday', 'last_7_days', 'last_30_days', 'all_time'];
+  const resolvedDateFilter = validDateFilters.includes(dateFilter) ? dateFilter : 'last_7_days';
 
   // Clean up previous pipeline files before starting new one
   cleanupPreviousPipelineFiles();
@@ -872,7 +877,7 @@ app.post('/api/packet-report', (req, res) => {
     // NEW: html report path
     const htmlReportPath = path.join(__dirname, '..', 'smart_assistant_report.html');
 
-    const env = { ...process.env, AMAZON_EMAIL: email, AMAZON_PASSWORD: password, REQUEST_ID: requestId };
+    const env = { ...process.env, AMAZON_EMAIL: email, AMAZON_PASSWORD: password, REQUEST_ID: requestId, DATE_FILTER: resolvedDateFilter };
 
     try {
       // Step 1: Generating cookies

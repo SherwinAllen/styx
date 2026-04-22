@@ -36,6 +36,7 @@ const SmartAssistant = () => {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [otpError, setOtpError] = useState(null);
+  const [dateFilter, setDateFilter] = useState('last_7_days');
   const navigate = useNavigate();
 
   // Use refs for values that need to be fresh in polling
@@ -300,7 +301,7 @@ const SmartAssistant = () => {
       const response = await fetch('http://localhost:5000/api/packet-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, source: 'SmartAssistant' })
+        body: JSON.stringify({ email, password, source: 'SmartAssistant', dateFilter })
       });
       if (!response.ok) {
         throw new Error(`Failed to start pipeline: ${response.statusText}`);
@@ -749,6 +750,14 @@ const SmartAssistant = () => {
 
   const inputWrapperStyle = { width: '80%', margin: '20px auto 0 auto', display: 'block', height: '56px' };
   const passwordWrapperStyle = { width: '80%', margin: '20px auto 0 auto', position: 'relative', display: 'block', height: '56px' };
+  const dateFilterWrapperStyle = { width: '80%', margin: '20px auto 0 auto', display: 'block' };
+  const dateFilterSelectStyle = {
+    width: '100%', boxSizing: 'border-box', padding: '15px 20px',
+    backgroundColor: 'rgba(0,0,0,0.8)', border: '2px solid #0f0', borderRadius: '10px',
+    color: '#0f0', fontSize: '1.2rem', fontFamily: "'Orbitron', sans-serif",
+    textAlign: 'center', boxShadow: '0 0 10px rgba(0,255,0,0.5)', outline: 'none',
+    cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none'
+  };
   const inputStyle = {
     width: '100%', boxSizing: 'border-box', padding: '15px 50px 15px 20px',
     backgroundColor: 'rgba(0,0,0,0.8)', border: '2px solid #0f0', borderRadius: '10px',
@@ -968,6 +977,20 @@ const SmartAssistant = () => {
               >
                 {showPassword ? <FaEyeSlash /> : <FaEye />}
               </button>
+            </div>
+
+            <div style={dateFilterWrapperStyle}>
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                style={dateFilterSelectStyle}
+              >
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="last_7_days">Last 7 Days</option>
+                <option value="last_30_days">Last 30 Days</option>
+                <option value="all_time">All Time</option>
+              </select>
             </div>
 
             <motion.button 

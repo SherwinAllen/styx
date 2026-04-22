@@ -709,6 +709,18 @@ def post_process_audio_assignment():
 print(" Starting Alexa Audio & Transcript Extraction")
 print("=" * 60)
 
+# Date filter configuration - read from environment variable set by server
+# Maps frontend filter value -> nth-child index in Amazon's date filter dropdown
+# Order on Amazon: (1) Today, (2) Yesterday, (3) Last 7 days, (4) Last 30 days, (5) All history
+DATE_FILTER_NTH_CHILD = {
+    "yesterday": 2,
+    "last_7_days": 3,
+    "last_30_days": 4,
+    "all_time": 5,
+}
+# "today" is intentionally omitted - it is Amazon's default page state, so no filter click is needed
+DATE_FILTER = os.getenv("DATE_FILTER", "last_7_days").lower()
+
 with sync_playwright() as p:
     # Initialize all output files
     initialize_output_files(clear_existing=True)
@@ -752,25 +764,37 @@ with sync_playwright() as p:
         exit(1)
 
     # Apply date filter
-    print("\n Setting date filter to 'Last 7 days'...")
-    try:
-        filter_button = page.locator("#filters-selected-bar > button")
-        if filter_button.count() > 0:
-            filter_button.click()
-            time.sleep(0.8)  # Reduced from 1
-            
-            date_filter = page.locator("#filter-menu > div.expanded-filter-menu > div.filter-by-date-menu.false > div > button")
-            if date_filter.count() > 0:
-                date_filter.click()
-                time.sleep(0.8)  # Reduced from 1
-                
-                last_7_days = page.locator("#filter-menu > div.expanded-filter-menu > div.filter-by-date-menu.false > div.filter-options-list > div:nth-child(3) > span.apd-radio-button.fa-stack.fa-2x.undefined > i")
-                if last_7_days.count() > 0:
-                    last_7_days.click()
-                    time.sleep(1)  # Reduced from 2
-                    print(" Date filter applied")
-    except Exception as e:
-        print(f"  Date filter not applied: {e}")
+    if DATE_FILTER == "today":
+        # "Today" is the default state of the Amazon page - no filter click needed
+        print(f"\n Date filter is 'Today' (default state) - skipping filter application")
+    elif DATE_FILTER in DATE_FILTER_NTH_CHILD:
+        nth_child_index = DATE_FILTER_NTH_CHILD[DATE_FILTER]
+        print(f"\n Setting date filter to '{DATE_FILTER}' (option #{nth_child_index})...")
+        try:
+            filter_button = page.locator("#filters-selected-bar > button")
+            if filter_button.count() > 0:
+                filter_button.click()
+                time.sleep(0.8)
+
+                date_filter = page.locator("#filter-menu > div.expanded-filter-menu > div.filter-by-date-menu.false > div > button")
+                if date_filter.count() > 0:
+                    date_filter.click()
+                    time.sleep(0.8)
+
+                    option_selector = (
+                        f"#filter-menu > div.expanded-filter-menu > div.filter-by-date-menu.false > "
+                        f"div.filter-options-list > div:nth-child({nth_child_index}) > "
+                        f"span.apd-radio-button.fa-stack.fa-2x.undefined > i"
+                    )
+                    option_element = page.locator(option_selector)
+                    if option_element.count() > 0:
+                        option_element.click()
+                        time.sleep(1)
+                        print(f" Date filter applied: {DATE_FILTER}")
+        except Exception as e:
+            print(f"  Date filter not applied: {e}")
+    else:
+        print(f"  Unknown DATE_FILTER value '{DATE_FILTER}' - proceeding without applying filter")
 
     # Wait for page to load activities — prefer retry if initial batch is zero
     print("Checking for initial batch of activities...")
