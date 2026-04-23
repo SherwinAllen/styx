@@ -1166,7 +1166,10 @@ def setup_signal_handlers(driver):
             try:
                 driver.quit()
                 print('SUCCESS: Browser closed gracefully')
-            except:
+            except OSError:
+                # Suppress WinError 6 — handle already released on Windows.
+                pass
+            except Exception:
                 print('WARNING: Browser already closed')
         sys.exit(0)
     
@@ -1374,8 +1377,17 @@ def main():
             try:
                 driver.quit()
                 print('SUCCESS: Browser session closed successfully')
+            except OSError:
+                # Windows: WinError 6 (invalid handle) on quit() is harmless —
+                # the process handle was already released. Suppress silently.
+                pass
             except Exception as quit_error:
                 print(f'WARNING: Error closing browser session: {quit_error}')
+            finally:
+                # Null out the reference so Python's GC does not call __del__
+                # on an already-quit driver, which triggers a second quit()
+                # and raises WinError 6 from inside undetected_chromedriver.
+                driver = None
         print('=== SESSION COMPLETED ===')
 
 if __name__ == '__main__':
