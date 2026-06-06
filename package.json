@@ -32,7 +32,8 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "install:browsers": "python -m playwright install chromium",
-    "setup": "pip install -r backend/requirements.txt && npm ci"
+    "setup": "pip install -r backend/requirements.txt && npm ci",
+    "setup:hooks": "pre-commit install"
   },
   "eslintConfig": {
     "extends": [

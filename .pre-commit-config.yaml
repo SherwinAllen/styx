@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: add-license-headers
+        name: Add Apache 2.0 license headers
+        language: python
+        entry: python tools/add_license_headers.py --write
+        types: [python, javascript]
+        pass_filenames: false
