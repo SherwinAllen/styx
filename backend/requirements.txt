@@ -126,3 +126,6 @@ pyobjc-framework-Cocoa==11.1; sys_platform == "darwin"
 pyobjc-framework-Quartz==11.1; sys_platform == "darwin"
 rubicon-objc==0.5.2; sys_platform == "darwin"
 mitmproxy-macos==0.10.7; sys_platform == "darwin"
+
+# This isn't a python script dependency, so need to move this in our next refactor
+pre-commit

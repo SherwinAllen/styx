@@ -1,0 +1,45 @@
+StyX
+Copyright 2025 Sherwin Allen, Shambo Sarkar, Sathvik S, Meeran Ahmed
+
+This product is licensed under the Apache License, Version 2.0.
+You may obtain a copy of the License at:
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Source repository: https://github.com/SherwinAllen/styx
+
+-------------------------------------------------------------------------------
+
+PROJECT DESCRIPTION
+
+StyX is an integrated IoT forensic framework that unifies two distinct
+acquisition workflows — Android-based Smartwatches (via wireless ADB) and
+Smart Assistant cloud data (Amazon Alexa / Fire TV) — into a single,
+investigator-friendly platform. It extracts forensic artifacts including
+system logs, GPS/sensor data, voice transcripts, audio recordings, and
+complete file systems, with automatic hash verification and a built-in
+web-based content viewer.
+
+-------------------------------------------------------------------------------
+
+AUTHORS
+
+  Sherwin Allen
+  Shambo Sarkar
+  Sathvik S
+  Meeran Ahmed
+
+-------------------------------------------------------------------------------
+
+MILESTONES
+
+  March 2025   — Originally created at a hackathon
+  November 2025 — Submitted to Black Hat Asia
+  April 2026   — Presented at Black Hat Asia conference
+
+-------------------------------------------------------------------------------
+
+ATTRIBUTION REQUIREMENT
+
+This NOTICE file must be retained in all copies or substantial portions
+of this software, including derivative works, as required by the
+Apache License, Version 2.0 (Section 4(d)).
